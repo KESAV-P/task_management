@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import DashboardLayout from "@/components/dashboard/dashboard-layout";
 import KanbanBoard from "@/components/dashboard/kanban-board";
 import { usePusher } from "@/hooks/use-pusher";
+import { TaskDTO } from "@/types";
 
 interface DashboardClientProps {
   user: {
@@ -14,22 +16,51 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ user }: DashboardClientProps) {
-  // Initialize real-time sync
+  // Shared modal state — lifted here so both the header button and column buttons can open it
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<TaskDTO | null>(null);
+  const [initialStatus, setInitialStatus] = useState<TaskDTO["status"]>("TODO");
+
+  const handleNewTask = useCallback(() => {
+    setEditingTask(null);
+    setInitialStatus("TODO");
+    setIsModalOpen(true);
+  }, []);
+
+  const handleAddTaskInColumn = useCallback((status: TaskDTO["status"]) => {
+    setEditingTask(null);
+    setInitialStatus(status);
+    setIsModalOpen(true);
+  }, []);
+
+  const handleEditTask = useCallback((task: TaskDTO) => {
+    setEditingTask(task);
+    setIsModalOpen(true);
+  }, []);
+
+  // Initialize real-time sync (graceful no-op if Pusher not configured)
   usePusher(user.id);
 
   return (
-    <DashboardLayout user={user}>
-      <div className="space-y-8 animate-fade-in">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            Workspace
+    <DashboardLayout user={user} onNewTask={handleNewTask}>
+      <div className="space-y-6 animate-fade-in h-full">
+        <div>
+          <h1 className="text-2xl font-extrabold text-white tracking-tight">
+            My Workspace
           </h1>
-          <p className="text-slate-500 text-sm">
-            Manage your projects and keep track of your team's progress in real-time.
+          <p className="text-slate-500 text-sm mt-1">
+            Drag tasks between columns to update their status.
           </p>
         </div>
 
-        <KanbanBoard />
+        <KanbanBoard
+          isModalOpen={isModalOpen}
+          setIsModalOpen={setIsModalOpen}
+          editingTask={editingTask}
+          initialStatus={initialStatus}
+          onAddTaskInColumn={handleAddTaskInColumn}
+          onEditTask={handleEditTask}
+        />
       </div>
     </DashboardLayout>
   );

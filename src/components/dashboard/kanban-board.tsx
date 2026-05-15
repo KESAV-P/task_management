@@ -3,25 +3,45 @@
 import { TaskDTO } from "@/types";
 import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import TaskColumn from "./task-column";
-import { useTaskStore } from "@/store/use-task-store";
-import { useState, useEffect } from "react";
 import TaskModal from "./task-modal";
+import { useTaskStore } from "@/store/use-task-store";
+import { useEffect } from "react";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
-export default function KanbanBoard() {
-  const { tasks, moveTaskOptimistic, fetchTasks, deleteTaskOptimistic } = useTaskStore();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskDTO | null>(null);
-  const [initialStatus, setInitialStatus] = useState<TaskDTO["status"]>("TODO");
+interface KanbanBoardProps {
+  // Controlled modal state — lifted to DashboardClient so header button works
+  isModalOpen: boolean;
+  setIsModalOpen: (open: boolean) => void;
+  editingTask: TaskDTO | null;
+  initialStatus: TaskDTO["status"];
+  onAddTaskInColumn: (status: TaskDTO["status"]) => void;
+  onEditTask: (task: TaskDTO) => void;
+}
 
-  // Fetch tasks on mount
+const COLUMNS: { id: TaskDTO["status"]; title: string; color: string }[] = [
+  { id: "TODO", title: "To Do", color: "slate" },
+  { id: "IN_PROGRESS", title: "In Progress", color: "indigo" },
+  { id: "DONE", title: "Completed", color: "emerald" },
+];
+
+export default function KanbanBoard({
+  isModalOpen,
+  setIsModalOpen,
+  editingTask,
+  initialStatus,
+  onAddTaskInColumn,
+  onEditTask,
+}: KanbanBoardProps) {
+  const { tasks, isLoading, moveTaskOptimistic, fetchTasks, deleteTaskOptimistic } =
+    useTaskStore();
+
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
   const onDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result;
-
     if (!destination) return;
     if (
       destination.droppableId === source.droppableId &&
@@ -37,46 +57,38 @@ export default function KanbanBoard() {
     );
   };
 
-  const handleAddTask = (status: TaskDTO["status"]) => {
-    setInitialStatus(status);
-    setEditingTask(null);
-    setIsModalOpen(true);
-  };
-
-  const handleEditTask = (task: TaskDTO) => {
-    setEditingTask(task);
-    setIsModalOpen(true);
-  };
-
   const handleDeleteTask = (taskId: string) => {
     toast.promise(deleteTaskOptimistic(taskId), {
-      loading: "Deleting task...",
+      loading: "Deleting…",
       success: "Task deleted",
       error: "Failed to delete task",
     });
   };
 
-  // Group tasks by status
-  const columns: { id: TaskDTO["status"]; title: string }[] = [
-    { id: "TODO", title: "To Do" },
-    { id: "IN_PROGRESS", title: "In Progress" },
-    { id: "DONE", title: "Completed" },
-  ];
+  if (isLoading && tasks.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-500">
+        <Loader2 size={28} className="animate-spin mr-3" />
+        <span>Loading tasks…</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full">
+    <>
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-12rem)] min-h-[500px]">
-          {columns.map((col) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-16rem)] min-h-[460px]">
+          {COLUMNS.map((col) => (
             <TaskColumn
               key={col.id}
               id={col.id}
               title={col.title}
+              color={col.color}
               tasks={tasks
                 .filter((t) => t.status === col.id)
                 .sort((a, b) => a.position - b.position)}
-              onAddTask={handleAddTask}
-              onEditTask={handleEditTask}
+              onAddTask={onAddTaskInColumn}
+              onEditTask={onEditTask}
               onDeleteTask={handleDeleteTask}
             />
           ))}
@@ -89,6 +101,6 @@ export default function KanbanBoard() {
         initialData={editingTask}
         initialStatus={initialStatus}
       />
-    </div>
+    </>
   );
 }

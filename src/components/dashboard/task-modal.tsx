@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Calendar, AlignLeft, Flag, LayoutList } from "lucide-react";
 
 interface TaskModalProps {
   open: boolean;
@@ -30,6 +30,14 @@ interface TaskModalProps {
   initialData?: TaskDTO | null;
   initialStatus?: TaskDTO["status"];
 }
+
+const EMPTY_FORM = {
+  title: "",
+  description: "",
+  status: "TODO" as TaskDTO["status"],
+  priority: "MEDIUM" as TaskDTO["priority"],
+  dueDate: "",
+};
 
 export default function TaskModal({
   open,
@@ -39,16 +47,11 @@ export default function TaskModal({
 }: TaskModalProps) {
   const { createTaskOptimistic, updateTaskOptimistic } = useTaskStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({ ...EMPTY_FORM, status: initialStatus });
 
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    status: initialStatus as TaskDTO["status"],
-    priority: "MEDIUM" as TaskDTO["priority"],
-    dueDate: "",
-  });
-
+  // Reset form whenever modal opens/changes target
   useEffect(() => {
+    if (!open) return;
     if (initialData) {
       setFormData({
         title: initialData.title,
@@ -58,20 +61,14 @@ export default function TaskModal({
         dueDate: initialData.dueDate ? initialData.dueDate.split("T")[0] : "",
       });
     } else {
-      setFormData({
-        title: "",
-        description: "",
-        status: initialStatus,
-        priority: "MEDIUM",
-        dueDate: "",
-      });
+      setFormData({ ...EMPTY_FORM, status: initialStatus });
     }
-  }, [initialData, initialStatus, open]);
+  }, [open, initialData, initialStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) {
-      toast.error("Title is required");
+      toast.error("Please enter a task title");
       return;
     }
 
@@ -79,132 +76,152 @@ export default function TaskModal({
     try {
       if (initialData) {
         await updateTaskOptimistic(initialData.id, {
-          ...formData,
+          title: formData.title,
           description: formData.description || null,
+          status: formData.status,
+          priority: formData.priority,
           dueDate: formData.dueDate || null,
         });
         toast.success("Task updated");
       } else {
-        await createTaskOptimistic(
-          formData.title,
-          formData.status,
-          formData.priority
-        );
-        // Note: For creation, description and dueDate updates would be handled in a real full implementation.
-        // For simplicity here, we're sticking to the basic creation logic defined in store.
+        await createTaskOptimistic({
+          title: formData.title,
+          description: formData.description || undefined,
+          status: formData.status,
+          priority: formData.priority,
+          dueDate: formData.dueDate || undefined,
+        });
         toast.success("Task created");
       }
       onOpenChange(false);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      toast.error("Something went wrong");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const update = (key: keyof typeof formData, value: string) =>
+    setFormData((prev) => ({ ...prev, [key]: value }));
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] bg-[#0f172a] border-slate-800 text-slate-100 shadow-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-slate-100">
-            {initialData ? "Edit Task" : "Create New Task"}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-[500px] bg-[#0d1424] border border-slate-800/80 text-slate-100 shadow-2xl shadow-black/60 p-0 gap-0 overflow-hidden">
+        {/* Colour accent bar */}
+        <div className="h-1 w-full bg-gradient-to-r from-indigo-500 via-violet-500 to-purple-500" />
 
-        <form onSubmit={handleSubmit} className="space-y-6 pt-4">
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-slate-400 text-xs font-bold uppercase tracking-wider">Title</Label>
-            <Input
-              id="title"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="What needs to be done?"
-              className="bg-slate-900/50 border-slate-800 focus:border-indigo-500/50 focus:ring-indigo-500/20 text-slate-100"
-            />
-          </div>
+        <div className="p-6">
+          <DialogHeader className="mb-5">
+            <DialogTitle className="text-lg font-bold text-slate-100">
+              {initialData ? "Edit Task" : "Create New Task"}
+            </DialogTitle>
+          </DialogHeader>
 
-          <div className="space-y-2">
-            <Label htmlFor="description" className="text-slate-400 text-xs font-bold uppercase tracking-wider">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Add more details..."
-              className="bg-slate-900/50 border-slate-800 focus:border-indigo-500/50 focus:ring-indigo-500/20 text-slate-100 min-h-[100px]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-slate-400 text-xs font-bold uppercase tracking-wider">Status</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(val: any) => setFormData({ ...formData, status: val })}
-              >
-                <SelectTrigger className="bg-slate-900/50 border-slate-800 text-slate-100">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
-                  <SelectItem value="TODO">To Do</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="DONE">Completed</SelectItem>
-                </SelectContent>
-              </Select>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Title */}
+            <div className="space-y-1.5">
+              <Label htmlFor="modal-title" className="text-slate-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <AlignLeft size={12} /> Title <span className="text-rose-400">*</span>
+              </Label>
+              <Input
+                id="modal-title"
+                value={formData.title}
+                onChange={(e) => update("title", e.target.value)}
+                placeholder="What needs to be done?"
+                className="bg-slate-900/60 border-slate-800 focus:border-indigo-500/60 focus:ring-0 focus:ring-offset-0 text-slate-100 placeholder:text-slate-600"
+                autoFocus
+              />
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-slate-400 text-xs font-bold uppercase tracking-wider">Priority</Label>
-              <Select
-                value={formData.priority}
-                onValueChange={(val: any) => setFormData({ ...formData, priority: val })}
-              >
-                <SelectTrigger className="bg-slate-900/50 border-slate-800 text-slate-100">
-                  <SelectValue placeholder="Select priority" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
-                  <SelectItem value="LOW">Low</SelectItem>
-                  <SelectItem value="MEDIUM">Medium</SelectItem>
-                  <SelectItem value="HIGH">High</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label htmlFor="modal-description" className="text-slate-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <AlignLeft size={12} /> Description
+              </Label>
+              <Textarea
+                id="modal-description"
+                value={formData.description}
+                onChange={(e) => update("description", e.target.value)}
+                placeholder="Add more context…"
+                className="bg-slate-900/60 border-slate-800 focus:border-indigo-500/60 focus:ring-0 text-slate-100 placeholder:text-slate-600 min-h-[90px] resize-none"
+              />
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dueDate" className="text-slate-400 text-xs font-bold uppercase tracking-wider">Due Date</Label>
-            <Input
-              id="dueDate"
-              type="date"
-              value={formData.dueDate}
-              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-              className="bg-slate-900/50 border-slate-800 focus:border-indigo-500/50 focus:ring-indigo-500/20 text-slate-100"
-            />
-          </div>
+            {/* Status + Priority row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                  <LayoutList size={12} /> Status
+                </Label>
+                <Select value={formData.status} onValueChange={(v) => v && update("status", v)}>
+                  <SelectTrigger className="bg-slate-900/60 border-slate-800 text-slate-200 focus:ring-0 focus:border-indigo-500/60">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
+                    <SelectItem value="TODO">To Do</SelectItem>
+                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                    <SelectItem value="DONE">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <DialogFooter className="pt-4">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              className="text-slate-400 hover:text-white hover:bg-slate-800"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white min-w-[120px]"
-            >
-              {isSubmitting ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : initialData ? (
-                "Save Changes"
-              ) : (
-                "Create Task"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+              <div className="space-y-1.5">
+                <Label className="text-slate-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                  <Flag size={12} /> Priority
+                </Label>
+                <Select value={formData.priority} onValueChange={(v) => v && update("priority", v)}>
+                  <SelectTrigger className="bg-slate-900/60 border-slate-800 text-slate-200 focus:ring-0 focus:border-indigo-500/60">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
+                    <SelectItem value="LOW">🔵 Low</SelectItem>
+                    <SelectItem value="MEDIUM">🟡 Medium</SelectItem>
+                    <SelectItem value="HIGH">🔴 High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Due Date */}
+            <div className="space-y-1.5">
+              <Label htmlFor="modal-due-date" className="text-slate-400 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                <Calendar size={12} /> Due Date
+              </Label>
+              <Input
+                id="modal-due-date"
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => update("dueDate", e.target.value)}
+                className="bg-slate-900/60 border-slate-800 focus:border-indigo-500/60 focus:ring-0 text-slate-200 [color-scheme:dark]"
+              />
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white min-w-[130px] font-semibold"
+              >
+                {isSubmitting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : initialData ? (
+                  "Save Changes"
+                ) : (
+                  "Create Task"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </div>
       </DialogContent>
     </Dialog>
   );

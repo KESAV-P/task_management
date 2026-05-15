@@ -3,19 +3,29 @@ import { TaskDTO } from "@/types";
 import { createTask, updateTask, deleteTask, getTasks } from "@/actions/tasks";
 import { toast } from "sonner";
 
+type CreateTaskInput = {
+  title: string;
+  description?: string;
+  status: TaskDTO["status"];
+  priority: TaskDTO["priority"];
+  dueDate?: string;
+};
+
 interface TaskState {
   tasks: TaskDTO[];
   isLoading: boolean;
   error: string | null;
 
-  // Actions
-  fetchTasks: () => Promise<void>;
+  // Raw state setters (used by Pusher hook)
   addTask: (task: TaskDTO) => void;
   updateTaskState: (task: TaskDTO) => void;
   removeTask: (taskId: string) => void;
 
+  // Data fetching
+  fetchTasks: () => Promise<void>;
+
   // Optimistic CRUD
-  createTaskOptimistic: (title: string, status: TaskDTO["status"], priority: TaskDTO["priority"]) => Promise<void>;
+  createTaskOptimistic: (input: CreateTaskInput) => Promise<void>;
   updateTaskOptimistic: (taskId: string, updates: Partial<TaskDTO>) => Promise<void>;
   deleteTaskOptimistic: (taskId: string) => Promise<void>;
   moveTaskOptimistic: (taskId: string, newStatus: TaskDTO["status"], newPosition: number) => Promise<void>;
@@ -26,17 +36,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchTasks: async () => {
-    set({ isLoading: true, error: null });
-    const result = await getTasks();
-    if (result.success && result.data) {
-      set({ tasks: result.data, isLoading: false });
-    } else {
-      const errorMessage = !result.success ? result.error : "Failed to fetch tasks";
-      set({ error: errorMessage, isLoading: false });
-      toast.error(errorMessage);
-    }
-  },
+  // ─── Raw setters ───────────────────────────────────────────────────────────
 
   addTask: (task) => {
     set((state) => {
@@ -57,62 +57,89 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
   },
 
-  createTaskOptimistic: async (title, status, priority) => {
+  // ─── Fetch ─────────────────────────────────────────────────────────────────
+
+  fetchTasks: async () => {
+    set({ isLoading: true, error: null });
+    const result = await getTasks();
+    if (result.success) {
+      set({ tasks: result.data, isLoading: false });
+    } else {
+      set({ error: result.error, isLoading: false });
+      toast.error(result.error);
+    }
+  },
+
+  // ─── Create ────────────────────────────────────────────────────────────────
+
+  createTaskOptimistic: async ({ title, description, status, priority, dueDate }) => {
     const tempId = `temp-${Date.now()}`;
     const newTask: TaskDTO = {
       id: tempId,
       title,
+      description: description ?? null,
       status,
       priority,
-      description: null,
-      dueDate: null,
-      position: get().tasks.filter(t => t.status === status).length,
-      userId: "", // Will be set by server
+      dueDate: dueDate ?? null,
+      position: get().tasks.filter((t) => t.status === status).length,
+      userId: "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
+    // Optimistic add
     set((state) => ({ tasks: [...state.tasks, newTask] }));
 
-    const result = await createTask({ title, status, priority });
+    const result = await createTask({ title, description, status, priority, dueDate });
 
     if (result.success && result.data) {
+      // Replace temp with real task from server
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === tempId ? result.data! : t)),
       }));
     } else {
+      // Roll back
       set((state) => ({
         tasks: state.tasks.filter((t) => t.id !== tempId),
       }));
-      const errorMessage = !result.success ? result.error : "Failed to create task";
-      toast.error(errorMessage);
+      toast.error(!result.success ? result.error : "Failed to create task");
     }
   },
 
+  // ─── Update ────────────────────────────────────────────────────────────────
+
   updateTaskOptimistic: async (taskId, updates) => {
     const previousTasks = get().tasks;
-    const taskToUpdate = previousTasks.find(t => t.id === taskId);
+    const taskToUpdate = previousTasks.find((t) => t.id === taskId);
     if (!taskToUpdate) return;
 
+    // Optimistic update
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, ...updates } : t)),
     }));
 
-    const result = await updateTask({ 
-      id: taskId, 
-      ...updates,
-      description: updates.description === null ? undefined : updates.description,
-      dueDate: updates.dueDate === null ? undefined : updates.dueDate
-    } as any);
+    const result = await updateTask({
+      id: taskId,
+      title: updates.title,
+      description: updates.description ?? undefined,
+      status: updates.status,
+      priority: updates.priority,
+      dueDate: updates.dueDate ?? undefined,
+      position: updates.position,
+    });
 
     if (!result.success) {
       set({ tasks: previousTasks });
-      toast.error(result.error ?? "Failed to update task");
+      toast.error(result.error);
     }
   },
 
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
   deleteTaskOptimistic: async (taskId) => {
     const previousTasks = get().tasks;
+
+    // Optimistic delete
     set((state) => ({
       tasks: state.tasks.filter((t) => t.id !== taskId),
     }));
@@ -121,46 +148,54 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     if (!result.success) {
       set({ tasks: previousTasks });
-      toast.error(result.error ?? "Failed to delete task");
+      toast.error(result.error);
+      throw new Error(result.error); // So toast.promise catches it
     }
   },
 
+  // ─── Move (drag & drop) ────────────────────────────────────────────────────
+
   moveTaskOptimistic: async (taskId, newStatus, newPosition) => {
     const previousTasks = get().tasks;
-    
-    // Local move logic
-    const taskToMove = previousTasks.find(t => t.id === taskId);
+    const taskToMove = previousTasks.find((t) => t.id === taskId);
     if (!taskToMove) return;
 
-    const updatedTasks = previousTasks.map(t => {
-        if (t.id === taskId) return { ...t, status: newStatus, position: newPosition };
-        
-        // Adjust positions of other tasks in same column
-        if (t.status === taskToMove.status && t.status === newStatus) {
-            // Moving within same column
-            if (taskToMove.position < newPosition) {
-                if (t.position > taskToMove.position && t.position <= newPosition) return { ...t, position: t.position - 1 };
-            } else {
-                if (t.position >= newPosition && t.position < taskToMove.position) return { ...t, position: t.position + 1 };
-            }
-        } else if (t.status === taskToMove.status) {
-            // Moving out of column
-            if (t.position > taskToMove.position) return { ...t, position: t.position - 1 };
-        } else if (t.status === newStatus) {
-            // Moving into new column
-            if (t.position >= newPosition) return { ...t, position: t.position + 1 };
-        }
+    const updatedTasks = previousTasks.map((t) => {
+      if (t.id === taskId) return { ...t, status: newStatus, position: newPosition };
 
-        return t;
+      if (t.status === taskToMove.status && t.status === newStatus) {
+        // Moving within same column
+        if (taskToMove.position < newPosition) {
+          if (t.position > taskToMove.position && t.position <= newPosition)
+            return { ...t, position: t.position - 1 };
+        } else {
+          if (t.position >= newPosition && t.position < taskToMove.position)
+            return { ...t, position: t.position + 1 };
+        }
+      } else if (t.status === taskToMove.status) {
+        // Moving out of source column
+        if (t.position > taskToMove.position)
+          return { ...t, position: t.position - 1 };
+      } else if (t.status === newStatus) {
+        // Moving into destination column
+        if (t.position >= newPosition)
+          return { ...t, position: t.position + 1 };
+      }
+
+      return t;
     });
 
     set({ tasks: updatedTasks });
 
-    const result = await updateTask({ id: taskId, status: newStatus, position: newPosition });
+    const result = await updateTask({
+      id: taskId,
+      status: newStatus,
+      position: newPosition,
+    });
 
     if (!result.success) {
       set({ tasks: previousTasks });
-      toast.error(result.error ?? "Failed to move task");
+      toast.error(result.error);
     }
-  }
+  },
 }));

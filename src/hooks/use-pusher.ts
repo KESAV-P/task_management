@@ -3,44 +3,50 @@
 import { useEffect } from "react";
 import Pusher from "pusher-js";
 import { useTaskStore } from "@/store/use-task-store";
-import { PUSHER_CLIENT_CONFIG, PUSHER_EVENTS, getUserChannel } from "@/lib/pusher-client";
-import { toast } from "sonner";
+import { PUSHER_EVENTS, getUserChannel } from "@/lib/pusher-shared";
+
+const PUSHER_KEY = process.env.NEXT_PUBLIC_PUSHER_KEY ?? "";
+const PUSHER_CLUSTER = process.env.NEXT_PUBLIC_PUSHER_CLUSTER ?? "us2";
+
+// Detect if Pusher is configured (not a placeholder)
+const isPusherConfigured =
+  PUSHER_KEY.length > 0 && !PUSHER_KEY.startsWith("your-");
 
 export function usePusher(userId: string | undefined) {
   const { addTask, updateTaskState, removeTask } = useTaskStore();
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !isPusherConfigured) return;
 
-    // Initialize Pusher client
-    const pusher = new Pusher(PUSHER_CLIENT_CONFIG.key, {
-      cluster: PUSHER_CLIENT_CONFIG.cluster,
-      authEndpoint: "/api/pusher/auth", // We'll need to create this route
-    });
+    let pusher: Pusher;
+    try {
+      pusher = new Pusher(PUSHER_KEY, {
+        cluster: PUSHER_CLUSTER,
+        authEndpoint: "/api/pusher/auth",
+      });
 
-    const channelName = getUserChannel(userId);
-    const channel = pusher.subscribe(channelName);
+      const channelName = getUserChannel(userId);
+      const channel = pusher.subscribe(channelName);
 
-    // Bind events
-    channel.bind(PUSHER_EVENTS.TASK_CREATED, (data: { task: any }) => {
-      addTask(data.task);
-      toast.info("New task added by another device", { id: "pusher-create" });
-    });
+      channel.bind(PUSHER_EVENTS.TASK_CREATED, (data: { task: any }) => {
+        addTask(data.task);
+      });
 
-    channel.bind(PUSHER_EVENTS.TASK_UPDATED, (data: { task: any }) => {
-      updateTaskState(data.task);
-      toast.info("Task updated by another device", { id: "pusher-update" });
-    });
+      channel.bind(PUSHER_EVENTS.TASK_UPDATED, (data: { task: any }) => {
+        updateTaskState(data.task);
+      });
 
-    channel.bind(PUSHER_EVENTS.TASK_DELETED, (data: { taskId: string }) => {
-      removeTask(data.taskId);
-      toast.info("Task deleted by another device", { id: "pusher-delete" });
-    });
+      channel.bind(PUSHER_EVENTS.TASK_DELETED, (data: { taskId: string }) => {
+        removeTask(data.taskId);
+      });
+    } catch (err) {
+      console.warn("[Pusher] Failed to connect:", err);
+    }
 
     return () => {
-      channel.unbind_all();
-      pusher.unsubscribe(channelName);
-      pusher.disconnect();
+      try {
+        pusher?.disconnect();
+      } catch {}
     };
   }, [userId, addTask, updateTaskState, removeTask]);
 }
