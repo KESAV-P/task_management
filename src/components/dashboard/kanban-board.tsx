@@ -77,7 +77,7 @@ export default function KanbanBoard({
   return (
     <>
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-16rem)] min-h-[460px]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full min-h-[460px]">
           {COLUMNS.map((col) => (
             <TaskColumn
               key={col.id}

@@ -43,8 +43,8 @@ export default function DashboardClient({ user }: DashboardClientProps) {
 
   return (
     <DashboardLayout user={user} onNewTask={handleNewTask}>
-      <div className="space-y-6 animate-fade-in h-full">
-        <div>
+      <div className="flex flex-col h-full animate-fade-in">
+        <div className="mb-6 shrink-0">
           <h1 className="text-2xl font-extrabold text-white tracking-tight">
             My Workspace
           </h1>
@@ -53,14 +53,16 @@ export default function DashboardClient({ user }: DashboardClientProps) {
           </p>
         </div>
 
-        <KanbanBoard
-          isModalOpen={isModalOpen}
-          setIsModalOpen={setIsModalOpen}
-          editingTask={editingTask}
-          initialStatus={initialStatus}
-          onAddTaskInColumn={handleAddTaskInColumn}
-          onEditTask={handleEditTask}
-        />
+        <div className="flex-1 min-h-0">
+          <KanbanBoard
+            isModalOpen={isModalOpen}
+            setIsModalOpen={setIsModalOpen}
+            editingTask={editingTask}
+            initialStatus={initialStatus}
+            onAddTaskInColumn={handleAddTaskInColumn}
+            onEditTask={handleEditTask}
+          />
+        </div>
       </div>
     </DashboardLayout>
   );
