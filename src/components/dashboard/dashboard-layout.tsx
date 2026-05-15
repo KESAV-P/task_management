@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { signOut } from "next-auth/react";
@@ -33,11 +33,20 @@ export default function DashboardLayout({ children, user, onNewTask }: Dashboard
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isSigningOut, startSignOut] = useTransition();
   const pathname = usePathname();
+  const router = useRouter();
 
   const handleSignOut = () => {
     startSignOut(async () => {
       await signOut({ callbackUrl: "/login" });
     });
+  };
+
+  const handleNewTaskClick = () => {
+    if (onNewTask) {
+      onNewTask();
+    } else {
+      router.push("/dashboard");
+    }
   };
 
   return (
@@ -153,7 +162,7 @@ export default function DashboardLayout({ children, user, onNewTask }: Dashboard
             <Separator orientation="vertical" className="h-5 bg-slate-800" />
             <Button
               id="new-task-btn"
-              onClick={onNewTask}
+              onClick={handleNewTaskClick}
               className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 rounded-xl px-4 sm:px-5 h-9 font-semibold text-sm transition-all"
             >
               <Plus size={16} className="sm:mr-1.5" />
